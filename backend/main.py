@@ -17,11 +17,6 @@ from logic import MalagasyAnalyzer
 analyzer = MalagasyAnalyzer()
 
 
-# ════════════════════════════════════════════════════════════
-#  Lifespan (remplace @app.on_event désormais déprécié)
-#  Référence : https://fastapi.tiangolo.com/advanced/events/
-# ════════════════════════════════════════════════════════════
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
