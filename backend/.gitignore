@@ -46,7 +46,6 @@ models/
 *.bin
 *.safetensors
 *.onnx
-data/
 *.pkl
 *.joblib
 
