@@ -181,26 +181,12 @@ async def analyze_text(payload: AnalyzeRequest) -> AnalyzeResponse:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-
-@app.post("/lemmatize", tags=["NLP"])
-async def lemmatize_word(payload: LemmatizeRequest) -> dict:
-    """
-    Lemmatise un mot individuel.
-    Avec `all_hypotheses=true`, retourne toutes les racines candidates
-    triées par score de confiance.
-    """
-    import asyncio
-    result = await asyncio.to_thread(
-        analyzer.get_root,
-        payload.word.strip(),
-        payload.all_hypotheses,
-    )
-    return {"word": payload.word, **result}
-
 @app.post("/detect_word_root", tags=["RootWord"])
 async def detect_word_root(payload: DetectWordRootRequest) -> dict:
-    word_root = malagasy_analyzer.main()
-    
+    result = malagasy_analyzer.detect_word_root(payload.word.strip())
+    return result
+
+
 @app.post("/validate_phonotactics", tags=["NLP"])
 async def validate_phonotactics(payload: AnalyzeRequest) -> dict:
     """Valide la phonotactique d'un texte Malagasy."""

@@ -613,3 +613,50 @@ def main():
         for mot in args.mots:
             traiter(mot)
 
+from pathlib import Path  # (already imported above; shown here to indicate usage)
+
+def _default_lexicon_path() -> Path:
+    # par défaut : fichier à côté du module
+    return Path(__file__).parent / "fototeny.json"
+
+_default_analyseur: Analyseur | None = None
+
+def _get_analyseur(json_path: str | Path | None = None) -> Analyseur:
+    """
+    Charge (et met en cache) un Analyseur à partir d'un chemin JSON.
+    """
+    global _default_analyseur
+    path = Path(json_path) if json_path else _default_lexicon_path()
+    # si aucun analyseur en cache ou chemin différent → (re)charger
+    if _default_analyseur is None or getattr(_default_analyseur, "_lexicon_path", None) != str(path):
+        _default_analyseur = Analyseur(path)
+        setattr(_default_analyseur, "_lexicon_path", str(path))
+    return _default_analyseur
+
+def detect_word_root(word: str, json_path: str | Path | None = None) -> dict:
+    """
+    Wrapper API-friendly : prend un mot (str) et retourne un dict sérialisable
+    avec la racine, les morphèmes, la méthode, la confiance et la distance.
+    """
+    if not word or not word.strip():
+        return {"word": word, "found": False, "error": "empty_word"}
+
+    analyseur = _get_analyseur(json_path)
+    res = analyseur.analyser(word)
+    if res is None:
+        return {"word": word, "found": False}
+
+    morphemes = [
+        {"texte": m.texte, "type": m.type, "fonction": m.fonction, "regle": m.regle}
+        for m in res.morphemes
+    ]
+
+    return {
+        "word": res.mot_entre,
+        "fototeny": res.fototeny,
+        "morphemes": morphemes,
+        "methode": res.methode,
+        "confiance": res.confiance,
+        "distance": res.distance,
+        "found": True,
+    }
