@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
+import malagasy_analyzer
 
 from logic import MalagasyAnalyzer
 
@@ -137,6 +138,8 @@ class LemmatizeRequest(BaseModel):
         False, description="Si True, retourne toutes les hypothèses de racine."
     )
 
+class DetectWordRootRequest(BaseModel) : 
+    word: str = Field(..., min_length=1)
 
 class WikiEnrichRequest(BaseModel):
     pages: list[str] | None = Field(
@@ -199,7 +202,10 @@ async def lemmatize_word(payload: LemmatizeRequest) -> dict:
     )
     return {"word": payload.word, **result}
 
-
+@app.post("/detect_word_root", tags=["RootWord"])
+async def detect_word_root(payload: DetectWordRootRequest) -> dict:
+    word_root = malagasy_analyzer.main()
+    
 @app.post("/validate_phonotactics", tags=["NLP"])
 async def validate_phonotactics(payload: AnalyzeRequest) -> dict:
     """Valide la phonotactique d'un texte Malagasy."""
