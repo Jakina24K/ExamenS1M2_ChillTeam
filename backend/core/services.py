@@ -155,7 +155,9 @@ def sentiment_analyze(sentence):
     return "POSITIVE" if score > 0 else "NEGATIVE" if score < 0 else "NEUTRAL"
 
 def correction(word):
-    with open("assets/unique_words.json", 'r', encoding="utf-8") as f:
+    dictionary_path = os.path.join(settings.BASE_DIR, 'assets', 'unique_words.json')
+
+    with open(dictionary_path, 'r', encoding="utf-8") as f:
         dictionary = json.load(f)
 
     if word in dictionary:

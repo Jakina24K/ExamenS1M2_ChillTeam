@@ -1,4 +1,6 @@
 import re
+import os
+from django.conf import settings
 
 def clean_text(file_path):
 
@@ -24,7 +26,11 @@ def remove_stop_words(tokens):
     return tokens
 
 def prepare_corpus(folder_path):
-    clean = clean_text(folder_path)
+    corpus_path = folder_path
+    if not os.path.isabs(corpus_path):
+        corpus_path = os.path.join(settings.BASE_DIR, folder_path)
+
+    clean = clean_text(corpus_path)
 
     tokens_split = clean.split()
 
