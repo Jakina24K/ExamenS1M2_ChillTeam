@@ -7,10 +7,8 @@
  * const { misspelledWords, isChecking } = useSpellCheck(editorText);
  * ```
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
-import levenshtein from 'fast-levenshtein';
-import { MalagasyDictionary } from '@/services/dictionary';
-import { tokenize } from '@/utils/textProcessing';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { apiClient } from "@/services/api";
 
 export interface MisspelledWord {
   word: string;
@@ -33,67 +31,35 @@ export interface UseSpellCheckResult {
 export function useSpellCheck(
   text: string,
   enabled = true,
-  debounceMs = 500
+  debounceMs = 500,
 ): UseSpellCheckResult {
   const [misspelledWords, setMisspelledWords] = useState<MisspelledWord[]>([]);
   const [isChecking, setIsChecking] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dictRef = useRef<MalagasyDictionary>(MalagasyDictionary.getInstance());
+  const requestIdRef = useRef(0);
 
-  const checkSpelling = useCallback((content: string) => {
+  const checkSpelling = useCallback(async (content: string) => {
     if (!content.trim()) {
       setMisspelledWords([]);
       return;
     }
 
+    const requestId = ++requestIdRef.current;
     setIsChecking(true);
-    const dict = dictRef.current;
-
-    // Ensure dictionary is loaded
-    if (!dict.isLoaded) {
-      dict.load().then(() => checkSpelling(content));
-      return;
-    }
-
-    const words = tokenize(content);
-    const misspelled: MisspelledWord[] = [];
-
-    let searchStart = 0;
-    for (const word of words) {
-      // Skip very short words, numbers, punctuation
-      if (word.length <= 1 || /^\d+$/.test(word)) continue;
-
-      const position = content.indexOf(word, searchStart);
-      searchStart = position + word.length;
-
-      // Skip if word exists in dictionary
-      if (dict.exists(word)) continue;
-
-      // Skip capitalized words (likely proper nouns)
-      if (word[0] === word[0].toUpperCase() && word.length > 2) continue;
-
-      // Generate suggestions using Levenshtein distance
-      const allWords = dict.getAllWords();
-      const scored: Array<{ w: string; d: number }> = [];
-
-      for (const candidate of allWords) {
-        if (Math.abs(candidate.length - word.length) > 2) continue;
-        const dist = levenshtein.get(word.toLowerCase(), candidate);
-        if (dist <= 3 && dist > 0) {
-          scored.push({ w: candidate, d: dist });
-        }
+    try {
+      const results = await apiClient.spellcheck(content);
+      if (requestId === requestIdRef.current) {
+        setMisspelledWords(results);
       }
-
-      const suggestions = scored
-        .sort((a, b) => a.d - b.d)
-        .slice(0, 5)
-        .map((s) => s.w);
-
-      misspelled.push({ word, position, suggestions });
+    } catch {
+      if (requestId === requestIdRef.current) {
+        setMisspelledWords([]);
+      }
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setIsChecking(false);
+      }
     }
-
-    setMisspelledWords(misspelled);
-    setIsChecking(false);
   }, []);
 
   useEffect(() => {

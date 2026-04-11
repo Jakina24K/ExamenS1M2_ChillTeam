@@ -1,7 +1,7 @@
 /**
  * Editor Sidebar Component - Updated with Chatbot
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +10,10 @@ import { Separator } from "@/components/ui/separator";
 import { useEditorStore } from "@/store/editorStore";
 import { getTextStats } from "@/utils/textProcessing";
 import { useSentimentAnalysis } from "@/hooks/useSentimentAnalysis";
-import { extractEntities, getEntityLabel } from "@/services/ner";
+import { apiClient, type BackendEntity } from "@/services/api";
+import { getEntityLabel } from "@/services/ner";
 import { validateText } from "@/services/phonotacticValidator";
 import {
-  FlipHorizontal,
   LucideFlipHorizontal,
   MessageSquare,
 } from "lucide-react";
@@ -35,20 +35,43 @@ export function EditorSidebar({
   const { plainText, aiFeatures, sidebarOpen } = useEditorStore();
   const [showFandrasanateny, setShowFandrasanateny] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
+  const [entities, setEntities] = useState<BackendEntity[]>([]);
 
   const textStats = useMemo(() => getTextStats(plainText), [plainText]);
   const sentiment = useSentimentAnalysis(
     plainText,
     aiFeatures.sentimentAnalysis,
   );
-  const entities = useMemo(
-    () => (aiFeatures.ner ? extractEntities(plainText) : []),
-    [plainText, aiFeatures.ner],
-  );
   const phonotacticErrors = useMemo(
     () => (aiFeatures.phonotacticValidation ? validateText(plainText) : []),
     [plainText, aiFeatures.phonotacticValidation],
   );
+
+  useEffect(() => {
+    if (!aiFeatures.ner || !plainText.trim()) {
+      setEntities([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    apiClient
+      .ner(plainText)
+      .then((results) => {
+        if (!cancelled) {
+          setEntities(results);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEntities([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [plainText, aiFeatures.ner]);
 
   if (!sidebarOpen) return null;
 

@@ -5,8 +5,8 @@
 import { useState } from 'react';
 import { Languages, BookOpen, MapPin, Copy, X } from 'lucide-react';
 import { translateWord, getTranslationHint } from '@/services/translation';
-import { lemmatize } from '@/services/lemmatization';
-import { extractEntities, getEntityLabel } from '@/services/ner';
+import { apiClient } from '@/services/api';
+import { getEntityLabel } from '@/services/ner';
 
 interface EditorContextMenuProps {
   visible: boolean;
@@ -43,17 +43,39 @@ export function EditorContextMenu({
   };
 
   const handleLemmatize = () => {
-    const result = lemmatize(selectedText);
-    setLemma(`Fototeny: ${result.root}${result.prefix ? ` (+ ${result.prefix}-)` : ''}${result.suffix ? ` (+ -${result.suffix})` : ''}`);
+    setLoading('lemma');
+    apiClient
+      .detectRootWord(selectedText)
+      .then((result) => {
+        setLemma(
+          `Fototeny: ${result.fototeny}${result.tovona ? ` (+ ${result.tovona}-)` : ''}${result.tovana ? ` (+ -${result.tovana})` : ''}`,
+        );
+      })
+      .catch(() => {
+        setLemma('Tsy hita ny fototeny');
+      })
+      .finally(() => {
+        setLoading(null);
+      });
   };
 
   const handleNER = () => {
-    const ents = extractEntities(selectedText);
-    if (ents.length > 0) {
-      setEntities(ents.map((e) => `${getEntityLabel(e.type)}: ${e.word}`).join('\n'));
-    } else {
-      setEntities('Tsy nahitana anarana manokana');
-    }
+    setLoading('ner');
+    apiClient
+      .ner(selectedText)
+      .then((ents) => {
+        if (ents.length > 0) {
+          setEntities(ents.map((e) => `${getEntityLabel(e.type)}: ${e.word}`).join('\n'));
+        } else {
+          setEntities('Tsy nahitana anarana manokana');
+        }
+      })
+      .catch(() => {
+        setEntities('Tsy nahitana anarana manokana');
+      })
+      .finally(() => {
+        setLoading(null);
+      });
   };
 
   const handleCopy = () => {
@@ -84,17 +106,19 @@ export function EditorContextMenu({
         <button
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-popover-foreground hover:bg-accent transition-colors"
           onClick={handleLemmatize}
+          disabled={loading === 'lemma'}
         >
           <BookOpen className="h-4 w-4" />
-          Fototeny (Lemmatize)
+          {loading === 'lemma' ? 'Mitady fototeny...' : 'Fototeny (Lemmatize)'}
         </button>
 
         <button
           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-popover-foreground hover:bg-accent transition-colors"
           onClick={handleNER}
+          disabled={loading === 'ner'}
         >
           <MapPin className="h-4 w-4" />
-          Anarana manokana (NER)
+          {loading === 'ner' ? 'Mitady NER...' : 'Anarana manokana (NER)'}
         </button>
 
         <div className="border-t border-border" />

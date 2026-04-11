@@ -12,7 +12,7 @@ import { useAutocomplete } from '@/hooks/useAutocomplete';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useEditorAnalytics } from '@/hooks/useEditorAnalytics';
 import { MalagasyDictionary } from '@/services/dictionary';
-import { SpellCheckExtension, type SpellCheckWord } from '@/extensions/SpellCheckExtension';
+import { SpellCheckExtension, type SpellCheckWord, updateSpellCheckDecorations } from '@/extensions/SpellCheckExtension';
 import { AutocompleteExtension, updateAutocompleteSuggestions } from '@/extensions/AutocompleteExtension';
 import { ContextMenuExtension, type ContextMenuState } from '@/extensions/ContextMenuExtension';
 import { EditorToolbar } from '@/components/EditorToolbar';
@@ -63,6 +63,19 @@ const Index = () => {
   const plainText = editor?.getText() || '';
   const { misspelledWords, recheckNow } = useSpellCheck(plainText, aiFeatures.spellcheck);
   const autocomplete = useAutocomplete(plainText, aiFeatures.autocomplete);
+
+  useEffect(() => {
+    if (!editor) return;
+
+    const decoratedWords: SpellCheckWord[] = misspelledWords.map((word) => ({
+      word: word.word,
+      from: word.position,
+      to: word.position + word.word.length,
+      suggestions: word.suggestions,
+    }));
+
+    updateSpellCheckDecorations(editor, decoratedWords);
+  }, [editor, misspelledWords]);
 
   // Update autocomplete extension storage when suggestions change
   useEffect(() => {

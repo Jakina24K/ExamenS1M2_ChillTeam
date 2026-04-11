@@ -7,8 +7,8 @@
  * const { suggestions, isLoading, accept } = useAutocomplete(text, cursorPos);
  * ```
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { loadNgramModel, type NgramModel } from '@/utils/dataLoader';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { apiClient } from "@/services/api";
 
 export interface AutocompleteSuggestion {
   word: string;
@@ -35,70 +35,40 @@ export interface UseAutocompleteResult {
  */
 export function useAutocomplete(
   text: string,
-  enabled = true
+  enabled = true,
 ): UseAutocompleteResult {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [triggerPosition, setTriggerPosition] = useState<TriggerPosition | null>(null);
-  const modelRef = useRef<NgramModel | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
-  // Load N-gram model on mount
-  useEffect(() => {
-    loadNgramModel().then((model) => {
-      modelRef.current = model;
-    });
-  }, []);
-
-  const predict = useCallback((currentText: string) => {
-    if (!modelRef.current || !currentText.trim()) {
+  const predict = useCallback(async (currentText: string) => {
+    if (!currentText.trim()) {
       setSuggestions([]);
       setTriggerPosition(null);
       return;
     }
 
+    const requestId = ++requestIdRef.current;
     setIsLoading(true);
-
-    const words = currentText.trim().split(/\s+/);
-    const results: string[] = [];
-
-    // Try trigram (last 2 words)
-    if (words.length >= 2) {
-      const context = `${words[words.length - 2]} ${words[words.length - 1]}`.toLowerCase();
-      const predictions = modelRef.current.get(context);
-      if (predictions) {
-        results.push(
-          ...predictions
-            .sort((a, b) => b.frequency - a.frequency)
-            .slice(0, 5)
-            .map((p) => p.word)
-        );
+    try {
+      const results = await apiClient.autocomplete(currentText);
+      if (requestId !== requestIdRef.current) {
+        return;
       }
-    }
 
-    // Try bigram (last word) if trigram didn't yield enough
-    if (results.length < 3 && words.length >= 1) {
-      const lastWord = words[words.length - 1].toLowerCase();
-      for (const [key, predictions] of modelRef.current.entries()) {
-        const keyWords = key.split(' ');
-        if (keyWords[keyWords.length - 1] === lastWord) {
-          for (const p of predictions) {
-            if (!results.includes(p.word)) {
-              results.push(p.word);
-            }
-          }
-        }
+      setSuggestions(results.slice(0, 5));
+      setTriggerPosition(results.length > 0 ? { x: 0, y: 0 } : null);
+    } catch {
+      if (requestId === requestIdRef.current) {
+        setSuggestions([]);
+        setTriggerPosition(null);
       }
-    }
-
-    setSuggestions(results.slice(0, 5));
-    setIsLoading(false);
-
-    // Set trigger position (will be updated by editor integration)
-    if (results.length > 0) {
-      setTriggerPosition({ x: 0, y: 0 });
-    } else {
-      setTriggerPosition(null);
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 

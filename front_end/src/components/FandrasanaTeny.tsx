@@ -10,6 +10,7 @@ import {
   FileText,
   BarChart3,
 } from "lucide-react";
+import { apiClient } from "@/services/api";
 
 /* ================= TYPES ================= */
 
@@ -54,17 +55,33 @@ export default function FandrasanaTeny({
     setMorphData(null);
 
     try {
-      const response = await fetch("http://localhost:8000/detect_word_root", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ word: text.trim() }),
+      const data = await apiClient.detectRootWord(text.trim());
+      setMorphData({
+        word: data.sampanteny,
+        fototeny: data.fototeny,
+        morphemes: [
+          ...(data.tovona
+            ? [{ texte: data.tovona, type: "Tovona", fonction: "Morpheme de debut", regle: "Avy amin'ny backend" }]
+            : []),
+          { texte: data.fototeny, type: "Fototeny", fonction: "Racine", regle: "Avy amin'ny backend" },
+          ...(data.tovana
+            ? [{ texte: data.tovana, type: "Tovana", fonction: "Morpheme de fin", regle: "Avy amin'ny backend" }]
+            : []),
+        ],
+        methode: "Backend Django",
+        confiance: 1,
+        found: true,
       });
-      const data = await response.json();
-      setMorphData(data);
     } catch (err) {
       console.error("Erreur backend:", err);
+      setMorphData({
+        word: text.trim(),
+        fototeny: "",
+        morphemes: [],
+        methode: "Backend Django",
+        confiance: 0,
+        found: false,
+      });
     }
 
     setTimeout(() => {

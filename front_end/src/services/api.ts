@@ -1,205 +1,168 @@
-/**
- * FastAPI Backend Client
- * Typed API client for the Malagasy AI Text Editor backend
- *
- * @example
- * ```ts
- * const result = await apiClient.spellcheck({ text: 'Salama tompoko' });
- * ```
- */
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/+$/, "");
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
-
-/** Common request/response types */
-export interface SpellcheckRequest {
-  text: string;
-  language?: string;
-}
-
-export interface SpellcheckResponse {
-  misspelledWords: Array<{
-    word: string;
-    position: number;
-    suggestions: string[];
-  }>;
-}
-
-export interface AutocompleteRequest {
-  text: string;
-  cursorPosition: number;
-  maxSuggestions?: number;
-}
-
-export interface AutocompleteResponse {
+export interface MisspelledWord {
+  word: string;
+  position: number;
   suggestions: string[];
-  context: string;
 }
 
-export interface LemmatizeRequest {
+export interface RootWordResponse {
+  fototeny: string;
+  tovona: string;
+  tovana: string;
+  sampanteny: string;
+}
+
+export type BackendEntityType = "City" | "Province" | "Name" | "Region";
+
+export interface BackendEntity {
   word: string;
-}
-
-export interface LemmatizeResponse {
-  original: string;
-  root: string;
-  prefix: string | null;
-  suffix: string | null;
-}
-
-export interface TranslateRequest {
-  word: string;
-  targetLang: 'fr' | 'en' | 'mg';
-  sourceLang?: 'mg' | 'fr' | 'en';
-}
-
-export interface TranslateResponse {
-  translation: string;
-  source: 'api' | 'dictionary';
-  confidence: number;
-}
-
-export interface SentimentRequest {
-  text: string;
+  type: BackendEntityType;
 }
 
 export interface SentimentResponse {
   score: number;
-  classification: 'positive' | 'negative' | 'neutral';
+  classification: "positive" | "negative" | "neutral";
   positiveWords: string[];
   negativeWords: string[];
 }
 
-export interface NERRequest {
-  text: string;
-}
-
-export interface NERResponse {
-  entities: Array<{
-    word: string;
-    type: string;
-    position: number;
-    length: number;
-  }>;
-}
-
-export interface ValidateRequest {
-  text: string;
-}
-
-export interface ValidateResponse {
-  isValid: boolean;
-  errors: Array<{
-    word: string;
-    position: number;
-    pattern: string;
-    suggestion: string;
-  }>;
-}
-
-/** API error class */
 export class APIError extends Error {
   constructor(
     public status: number,
     public statusText: string,
-    public body?: unknown
+    public body?: unknown,
   ) {
     super(`API Error ${status}: ${statusText}`);
-    this.name = 'APIError';
+    this.name = "APIError";
   }
 }
 
-/** Retry configuration */
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 1000;
+async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
 
-async function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Generic fetch wrapper with retry logic and error handling
- */
-async function apiFetch<T>(
-  endpoint: string,
-  options: RequestInit = {},
-  retries = MAX_RETRIES
-): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
-      });
-
-      if (!response.ok) {
-        const body = await response.text().catch(() => '');
-        throw new APIError(response.status, response.statusText, body);
-      }
-
-      return await response.json();
-    } catch (error) {
-      if (attempt === retries) throw error;
-      if (error instanceof APIError && error.status < 500) throw error;
-      await sleep(RETRY_DELAY_MS * Math.pow(2, attempt));
-    }
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new APIError(response.status, response.statusText, body);
   }
 
-  throw new Error('Unexpected: exhausted retries');
+  return response.json() as Promise<T>;
 }
 
-/** API client with typed endpoints */
+function findWordPosition(text: string, word: string, startIndex: number): number {
+  const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`\\b${escapedWord}\\b`, "gi");
+  regex.lastIndex = startIndex;
+  const match = regex.exec(text);
+  return match ? match.index : text.indexOf(word, startIndex);
+}
+
+function normalizeSuggestions(result: unknown): string[] {
+  if (Array.isArray(result)) {
+    return result.filter((value): value is string => typeof value === "string");
+  }
+
+  if (typeof result === "string" && result !== "Le mot est correct") {
+    return [result];
+  }
+
+  return [];
+}
+
+function normalizeSentimentLabel(label: string): SentimentResponse["classification"] {
+  switch (label) {
+    case "POSITIVE":
+      return "positive";
+    case "NEGATIVE":
+      return "negative";
+    default:
+      return "neutral";
+  }
+}
+
 export const apiClient = {
-  /** Check spelling of text */
-  spellcheck: (data: SpellcheckRequest) =>
-    apiFetch<SpellcheckResponse>('/spellcheck', {
-      method: 'POST',
-      body: JSON.stringify(data),
+  detectRootWord: (word: string) =>
+    apiFetch<RootWordResponse>("/detect_root_word/", {
+      method: "POST",
+      body: JSON.stringify({ word }),
     }),
 
-  /** Get autocomplete suggestions */
-  autocomplete: (data: AutocompleteRequest) =>
-    apiFetch<AutocompleteResponse>('/autocomplete', {
-      method: 'POST',
-      body: JSON.stringify(data),
+  autocomplete: async (sentence: string) => {
+    const suggestions = await apiFetch<string[]>("/autocompletion/", {
+      method: "POST",
+      body: JSON.stringify({ sentence }),
+    });
+
+    return Array.isArray(suggestions) ? suggestions : [];
+  },
+
+  correction: (word: string) =>
+    apiFetch<string[] | string>("/correction/", {
+      method: "POST",
+      body: JSON.stringify({ word }),
     }),
 
-  /** Get word root (lemmatization) */
-  lemmatize: (data: LemmatizeRequest) =>
-    apiFetch<LemmatizeResponse>('/lemmatize', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+  spellcheck: async (sentence: string): Promise<MisspelledWord[]> => {
+    const results = await apiFetch<
+      Array<{ word: string; valid: boolean; error: string | null }>
+    >("/check_words/", {
+      method: "POST",
+      body: JSON.stringify({ sentence }),
+    });
 
-  /** Translate a word */
-  translate: (data: TranslateRequest) =>
-    apiFetch<TranslateResponse>('/translate', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+    const invalidWords = results.filter((entry) => !entry.valid);
+    let searchStart = 0;
 
-  /** Analyze sentiment */
-  sentiment: (data: SentimentRequest) =>
-    apiFetch<SentimentResponse>('/sentiment', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+    return Promise.all(
+      invalidWords.map(async (entry) => {
+        const position = findWordPosition(sentence, entry.word, searchStart);
+        searchStart = position >= 0 ? position + entry.word.length : searchStart;
 
-  /** Extract named entities */
-  ner: (data: NERRequest) =>
-    apiFetch<NERResponse>('/ner', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+        let suggestions: string[] = [];
+        try {
+          suggestions = normalizeSuggestions(await apiClient.correction(entry.word));
+        } catch {
+          suggestions = [];
+        }
 
-  /** Validate phonotactic rules */
-  validate: (data: ValidateRequest) =>
-    apiFetch<ValidateResponse>('/validate', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+        return {
+          word: entry.word,
+          position: Math.max(position, 0),
+          suggestions: suggestions.filter((suggestion) => suggestion.toLowerCase() !== entry.word.toLowerCase()),
+        };
+      }),
+    );
+  },
+
+  ner: async (sentence: string): Promise<BackendEntity[]> => {
+    const response = await apiFetch<{ entities: BackendEntity[]; count: number }>(
+      "/named_entity_recognition/",
+      {
+        method: "POST",
+        body: JSON.stringify({ sentence }),
+      },
+    );
+
+    return response.entities || [];
+  },
+
+  sentiment: async (sentence: string): Promise<SentimentResponse> => {
+    const response = await apiFetch<string>("/sentence_sentiment/", {
+      method: "POST",
+      body: JSON.stringify({ sentence }),
+    });
+
+    return {
+      score: response === "POSITIVE" ? 1 : response === "NEGATIVE" ? -1 : 0,
+      classification: normalizeSentimentLabel(response),
+      positiveWords: [],
+      negativeWords: [],
+    };
+  },
 };

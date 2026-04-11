@@ -7,9 +7,8 @@
  * const { score, classification, details } = useSentimentAnalysis(text);
  * ```
  */
-import { useState, useEffect, useRef } from 'react';
-import { tokenize, normalize } from '@/utils/textProcessing';
-import { loadSentimentLexicon, type SentimentLexicon } from '@/utils/dataLoader';
+import { useState, useEffect, useRef } from "react";
+import { apiClient } from "@/services/api";
 
 export type SentimentClassification = 'positive' | 'negative' | 'neutral';
 
@@ -43,65 +42,57 @@ export interface UseSentimentAnalysisResult {
 export function useSentimentAnalysis(
   text: string,
   enabled = true,
-  debounceMs = 800
+  debounceMs = 800,
 ): UseSentimentAnalysisResult {
   const [result, setResult] = useState<SentimentResult>({
     score: 0,
-    classification: 'neutral',
+    classification: "neutral",
     positiveWords: [],
     negativeWords: [],
     totalWords: 0,
   });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const lexiconRef = useRef<SentimentLexicon | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Load lexicon once
-  useEffect(() => {
-    lexiconRef.current = loadSentimentLexicon();
-  }, []);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (!enabled || !text.trim()) {
-      setResult({ score: 0, classification: 'neutral', positiveWords: [], negativeWords: [], totalWords: 0 });
+      setResult({ score: 0, classification: "neutral", positiveWords: [], negativeWords: [], totalWords: 0 });
       return;
     }
 
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
+    timerRef.current = setTimeout(async () => {
+      const requestId = ++requestIdRef.current;
       setIsAnalyzing(true);
+      try {
+        const response = await apiClient.sentiment(text);
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
 
-      const lexicon = lexiconRef.current;
-      if (!lexicon) return;
-
-      const words = tokenize(text).map(normalize);
-      const positiveWords: string[] = [];
-      const negativeWords: string[] = [];
-
-      for (const word of words) {
-        if (lexicon.positive.has(word)) positiveWords.push(word);
-        else if (lexicon.negative.has(word)) negativeWords.push(word);
+        setResult({
+          score: response.score,
+          classification: response.classification,
+          positiveWords: response.positiveWords,
+          negativeWords: response.negativeWords,
+          totalWords: text.trim().split(/\s+/).filter(Boolean).length,
+        });
+      } catch {
+        if (requestId === requestIdRef.current) {
+          setResult({
+            score: 0,
+            classification: "neutral",
+            positiveWords: [],
+            negativeWords: [],
+            totalWords: text.trim().split(/\s+/).filter(Boolean).length,
+          });
+        }
+      } finally {
+        if (requestId === requestIdRef.current) {
+          setIsAnalyzing(false);
+        }
       }
-
-      const totalSentimentWords = positiveWords.length + negativeWords.length;
-      let score = 0;
-
-      if (totalSentimentWords > 0) {
-        score = (positiveWords.length - negativeWords.length) / totalSentimentWords;
-      }
-
-      let classification: SentimentClassification = 'neutral';
-      if (score > 0.15) classification = 'positive';
-      else if (score < -0.15) classification = 'negative';
-
-      setResult({
-        score,
-        classification,
-        positiveWords: [...new Set(positiveWords)],
-        negativeWords: [...new Set(negativeWords)],
-        totalWords: words.length,
-      });
-      setIsAnalyzing(false);
     }, debounceMs);
 
     return () => {
@@ -115,38 +106,5 @@ export function useSentimentAnalysis(
     positiveWords: result.positiveWords,
     negativeWords: result.negativeWords,
     isAnalyzing,
-  };
-}
-
-/**
- * Standalone sentiment analysis function (non-hook)
- */
-export function analyzeSentiment(text: string): SentimentResult {
-  const lexicon = loadSentimentLexicon();
-  const words = tokenize(text).map(normalize);
-  const positiveWords: string[] = [];
-  const negativeWords: string[] = [];
-
-  for (const word of words) {
-    if (lexicon.positive.has(word)) positiveWords.push(word);
-    else if (lexicon.negative.has(word)) negativeWords.push(word);
-  }
-
-  const totalSentimentWords = positiveWords.length + negativeWords.length;
-  let score = 0;
-  if (totalSentimentWords > 0) {
-    score = (positiveWords.length - negativeWords.length) / totalSentimentWords;
-  }
-
-  let classification: SentimentClassification = 'neutral';
-  if (score > 0.15) classification = 'positive';
-  else if (score < -0.15) classification = 'negative';
-
-  return {
-    score,
-    classification,
-    positiveWords: [...new Set(positiveWords)],
-    negativeWords: [...new Set(negativeWords)],
-    totalWords: words.length,
   };
 }
