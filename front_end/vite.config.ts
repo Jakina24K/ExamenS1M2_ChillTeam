@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
     proxy: {
-      "/api": {
+      "/": {
         target: "https://examens1m2-chillteam.onrender.com/",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
