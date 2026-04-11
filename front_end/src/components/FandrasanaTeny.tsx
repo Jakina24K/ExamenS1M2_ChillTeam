@@ -46,18 +46,29 @@ export default function FandrasanaTeny({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const getAnalyzableWord = (value: string) => {
+    const words = value
+      .trim()
+      .split(/\s+/)
+      .map((word) => word.replace(/[^\p{L}'-]/gu, ""))
+      .filter(Boolean);
+
+    return words.at(-1) ?? "";
+  };
+
   /* ================= ANALYSE ================= */
 
   const analyzeText = async () => {
-    if (!text.trim()) return;
+    const analyzableWord = getAnalyzableWord(text);
+    if (!analyzableWord) return;
 
     setIsAnalyzing(true);
     setMorphData(null);
 
     try {
-      const data = await apiClient.detectRootWord(text.trim());
+      const data = await apiClient.detectRootWord(analyzableWord);
       setMorphData({
-        word: data.sampanteny,
+        word: data.sampanteny || analyzableWord,
         fototeny: data.fototeny,
         morphemes: [
           ...(data.tovona
@@ -75,7 +86,7 @@ export default function FandrasanaTeny({
     } catch (err) {
       console.error("Erreur backend:", err);
       setMorphData({
-        word: text.trim(),
+        word: analyzableWord,
         fototeny: "",
         morphemes: [],
         methode: "Backend Django",

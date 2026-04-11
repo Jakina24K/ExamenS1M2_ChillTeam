@@ -27,6 +27,17 @@ export interface SentimentResponse {
   negativeWords: string[];
 }
 
+interface SpellcheckEntry {
+  word: string;
+  valid: boolean;
+  error: string | null;
+}
+
+interface NERResponse {
+  entities: BackendEntity[];
+  count: number;
+}
+
 export class APIError extends Error {
   constructor(
     public status: number,
@@ -86,12 +97,24 @@ function normalizeSentimentLabel(label: string): SentimentResponse["classificati
   }
 }
 
+function normalizeRootWordResponse(response: Partial<RootWordResponse>): RootWordResponse {
+  return {
+    fototeny: response.fototeny ?? "",
+    tovona: response.tovona ?? "",
+    tovana: response.tovana ?? "",
+    sampanteny: response.sampanteny ?? "",
+  };
+}
+
 export const apiClient = {
-  detectRootWord: (word: string) =>
-    apiFetch<RootWordResponse>("/detect_root_word/", {
+  detectRootWord: async (word: string) => {
+    const response = await apiFetch<Partial<RootWordResponse>>("/detect_root_word/", {
       method: "POST",
       body: JSON.stringify({ word }),
-    }),
+    });
+
+    return normalizeRootWordResponse(response);
+  },
 
   autocomplete: async (sentence: string) => {
     const suggestions = await apiFetch<string[]>("/autocompletion/", {
@@ -109,9 +132,7 @@ export const apiClient = {
     }),
 
   spellcheck: async (sentence: string): Promise<MisspelledWord[]> => {
-    const results = await apiFetch<
-      Array<{ word: string; valid: boolean; error: string | null }>
-    >("/check_words/", {
+    const results = await apiFetch<SpellcheckEntry[]>("/check_words/", {
       method: "POST",
       body: JSON.stringify({ sentence }),
     });
@@ -141,13 +162,10 @@ export const apiClient = {
   },
 
   ner: async (sentence: string): Promise<BackendEntity[]> => {
-    const response = await apiFetch<{ entities: BackendEntity[]; count: number }>(
-      "/named_entity_recognition/",
-      {
-        method: "POST",
-        body: JSON.stringify({ sentence }),
-      },
-    );
+    const response = await apiFetch<NERResponse>("/named_entity_recognition/", {
+      method: "POST",
+      body: JSON.stringify({ sentence }),
+    });
 
     return response.entities || [];
   },

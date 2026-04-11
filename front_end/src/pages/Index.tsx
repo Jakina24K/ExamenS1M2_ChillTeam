@@ -104,6 +104,22 @@ const Index = () => {
     onToggleSidebar: toggleSidebar,
   });
 
+  const replaceTextRange = useCallback((from: number, to: number, replacement: string) => {
+    if (!editor) return;
+
+    editor
+      .chain()
+      .focus()
+      .insertContentAt({ from, to }, replacement)
+      .run();
+    increment('correctionsAccepted');
+    setContextMenu((state) => ({ ...state, visible: false }));
+  }, [editor, increment]);
+
+  const handleApplySuggestion = useCallback((position: number, word: string, suggestion: string) => {
+    replaceTextRange(position, position + word.length, suggestion);
+  }, [replaceTextRange]);
+
   const handleAutocompleteSelect = useCallback((word: string) => {
     if (!editor) return;
     const { from } = editor.state.selection;
@@ -139,7 +155,11 @@ const Index = () => {
 
       {/* Sidebar */}
       {sidebarOpen && (
-        <EditorSidebar misspelledWords={misspelledWords} editorStats={stats} />
+        <EditorSidebar
+          misspelledWords={misspelledWords}
+          editorStats={stats}
+          onApplySuggestion={handleApplySuggestion}
+        />
       )}
 
       {/* Autocomplete Popup */}
@@ -157,6 +177,7 @@ const Index = () => {
         x={contextMenu.x}
         y={contextMenu.y}
         selectedText={contextMenu.selectedText}
+        onReplaceText={(replacement) => replaceTextRange(contextMenu.from, contextMenu.to, replacement)}
         onClose={() => setContextMenu((s) => ({ ...s, visible: false }))}
       />
     </div>

@@ -26,16 +26,33 @@ import type { EditorStats } from "@/hooks/useEditorAnalytics";
 interface EditorSidebarProps {
   misspelledWords: MisspelledWord[];
   editorStats: EditorStats;
+  onApplySuggestion: (position: number, word: string, suggestion: string) => void;
 }
 
 export function EditorSidebar({
   misspelledWords,
   editorStats,
+  onApplySuggestion,
 }: EditorSidebarProps) {
   const { plainText, aiFeatures, sidebarOpen } = useEditorStore();
   const [showFandrasanateny, setShowFandrasanateny] = useState(false);
   const [showChatbot, setShowChatbot] = useState(false);
   const [entities, setEntities] = useState<BackendEntity[]>([]);
+  const [rootAnalysis, setRootAnalysis] = useState<{
+    word: string;
+    fototeny: string;
+    tovona: string;
+    tovana: string;
+  } | null>(null);
+
+  const focusWord = useMemo(() => {
+    if (misspelledWords.length > 0) {
+      return misspelledWords[0].word;
+    }
+
+    const words = plainText.trim().split(/\s+/).filter(Boolean);
+    return words.at(-1) ?? "";
+  }, [misspelledWords, plainText]);
 
   const textStats = useMemo(() => getTextStats(plainText), [plainText]);
   const sentiment = useSentimentAnalysis(
@@ -72,6 +89,37 @@ export function EditorSidebar({
       cancelled = true;
     };
   }, [plainText, aiFeatures.ner]);
+
+  useEffect(() => {
+    if (!focusWord.trim()) {
+      setRootAnalysis(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    apiClient
+      .detectRootWord(focusWord)
+      .then((result) => {
+        if (!cancelled) {
+          setRootAnalysis({
+            word: result.sampanteny || focusWord,
+            fototeny: result.fototeny,
+            tovona: result.tovona,
+            tovana: result.tovana,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRootAnalysis(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [focusWord]);
 
   if (!sidebarOpen) return null;
 
@@ -151,6 +199,7 @@ export function EditorSidebar({
                               key={s}
                               variant="secondary"
                               className="text-xs cursor-pointer hover:bg-primary hover:text-primary-foreground"
+                              onClick={() => onApplySuggestion(w.position, w.word, s)}
                             >
                               {s}
                             </Badge>
@@ -159,6 +208,43 @@ export function EditorSidebar({
                       )}
                     </div>
                   ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Root Word Analysis */}
+            {rootAnalysis && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    Fototeny backend
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Teny</span>
+                    <span className="font-medium text-right break-all">
+                      {rootAnalysis.word}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Fototeny</span>
+                    <span className="font-medium text-right break-all">
+                      {rootAnalysis.fototeny || "-"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Tovona</span>
+                    <span className="font-medium text-right break-all">
+                      {rootAnalysis.tovona || "-"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-muted-foreground">Tovana</span>
+                    <span className="font-medium text-right break-all">
+                      {rootAnalysis.tovana || "-"}
+                    </span>
+                  </div>
                 </CardContent>
               </Card>
             )}
